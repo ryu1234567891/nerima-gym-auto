@@ -73,3 +73,16 @@ jobs:
             data/**/*.txt
             data/*.json
           retention-days: 7
+
+                # ===== SMTP 送信テスト（一時的）=====
+      - name: SMTP health check (force send)
+        if: ${{ always() }}   # 成否に関わらず実行
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO:   ${{ secrets.MAIL_TO }}
+        run: |
+          python send_test_mail.py
+
