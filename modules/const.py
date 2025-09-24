@@ -1,4 +1,4 @@
-# modules/const.py — 安全なデフォルト＋TOML/ENV上書き＋互換エイリアス完備版
+# modules/const.py — 安全既定＋TOML/ENV上書き＋互換エイリアスてんこ盛り
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -48,8 +48,9 @@ _DEFAULT_SELECTORS = {
     # 抽出（○セル）
     "ok_cell": "td.ok img[alt='O'], td.ok",
 
-    # 例外画面の検出・復帰
+    # エラー検出（本文テキスト）
     "error_text": "text=エラーが発生しました, text=一定時間操作がなかった場合, text=アクセス権限がありません",
+    # 代表ボタン一括
     "error_buttons": "a:has-text('TOPへ'), input[value='確 定'], button:has-text('確定'), button:has-text('閉じる'), a:has-text('閉じる')",
 }
 
@@ -82,7 +83,15 @@ LEFT_AVAIL_MENU         = _sel("left_avail_menu")
 SEARCH_BUTTON           = _sel("search_button")
 NEXT_BUTTON             = _sel("next_button")
 OK_CELL_SELECTOR        = _sel("ok_cell")
+
+# エラー本文（まとめ）
 ERROR_TEXT_SELECTOR     = _sel("error_text")
+# よく使う個別テキスト（名称ゆれ対策で個別にも用意）
+GENERIC_ERROR_SELECTOR  = "text=エラーが発生しました"
+TIMEOUT_SELECTOR        = "text=一定時間操作がなかった場合"
+ACCESS_DENIED_SELECTOR  = "text=アクセス権限がありません"
+
+# エラーボタン群（まとめ）
 ERROR_BUTTONS_SELECTOR  = _sel("error_buttons")
 
 # 個別ボタン（確定/TOP/閉じる）— 旧コードが単体名で呼んでも耐えるよう明示
@@ -122,18 +131,29 @@ _compat_map = {
     "SEARCH_BTN_SELECTOR":       SEARCH_BUTTON,
     "NEXT_BTN_SELECTOR":         NEXT_BUTTON,
 
-    # 例外/復帰
-    "ERROR_BTN_SELECTOR":        ERROR_BUTTONS_SELECTOR,
-    "ERROR_TEXTS":               ERROR_TEXT_SELECTOR,
-
-    # 個別ボタン（確定/TOP/閉じる）
-    "CONFIRM_BTN_SELECTOR":      CONFIRM_BUTTON,
-    "TO_TOP_BTN_SELECTOR":       TOP_BUTTON,
-    "CLOSE_BTN_SELECTOR":        CLOSE_BUTTON,
-
     # 抽出
     "OK_SELECTOR":               OK_CELL_SELECTOR,
     "OK_CELL":                   OK_CELL_SELECTOR,
+
+    # エラー本文（個別も含む）
+    "ERROR_TEXTS":               ERROR_TEXT_SELECTOR,
+    "ERROR_TEXT":                ERROR_TEXT_SELECTOR,
+    "GENERIC_ERROR_SELECTOR":    GENERIC_ERROR_SELECTOR,
+    "TIMEOUT_TEXT_SELECTOR":     TIMEOUT_SELECTOR,
+    "TIMEOUT_SELECTOR":          TIMEOUT_SELECTOR,
+    "ACCESS_DENIED_SELECTOR":    ACCESS_DENIED_SELECTOR,
+    "ACCESS_DENIED_TEXT":        ACCESS_DENIED_SELECTOR,
+    "ERROR_PAGE_TEXT":           GENERIC_ERROR_SELECTOR,
+
+    # エラーボタン群／個別ボタン
+    "ERROR_BTN_SELECTOR":        ERROR_BUTTONS_SELECTOR,
+    "CONFIRM_BTN_SELECTOR":      CONFIRM_BUTTON,
+    "CONFIRM_SELECTOR":          CONFIRM_BUTTON,
+    "TO_TOP_BTN_SELECTOR":       TOP_BUTTON,
+    "TOP_SELECTOR":              TOP_BUTTON,
+    "CLOSE_BTN_SELECTOR":        CLOSE_BUTTON,
+    "CLOSE_SELECTOR":            CLOSE_BUTTON,
+    "POPUP_CLOSE_SELECTOR":      CLOSE_BUTTON,
 
     # リトライ/スリープ名称ゆれ
     "MAX_RETRIES":               RETRY_MAX,
