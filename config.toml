@@ -6,6 +6,7 @@ multifunc       = "img[alt='多機能操作'], input[alt='多機能操作'], a:h
 left_avail_menu = "a:has-text('空き状況の確認')"
 search_button   = "input[type='submit'][value*='検索'], button:has-text('検索'), img[alt='検索']"
 next_button     = "a:has-text('次へ'), input[type='button'][value='次へ']"
+ok_cell         = "td.ok img[alt='O'], td.ok" 
 
 [app]
 user_agent       = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari"
