@@ -163,3 +163,30 @@ _compat_map = {
 }
 
 globals().update(_compat_map)
+
+# ==== labels / text for form operations (with sensible defaults) ====
+import os as _os
+
+# 分類１：施設の種類（屋内スポーツ / 文化施設など）
+CATEGORY1_LABEL = _os.getenv("CATEGORY1_LABEL", "屋内スポーツ施設")
+# 連続実行で 2本目に使う想定（文化施設）
+CATEGORY2_LABEL = _os.getenv("CATEGORY2_LABEL", "文化施設")
+
+# 目的（プルダウン）
+PURPOSE_LABEL   = _os.getenv("PURPOSE_LABEL", "バレーボール")
+
+# 「確定」「確定・全検索」などボタンの文言（UI差異吸収用）
+CONFIRM_LABEL             = _os.getenv("CONFIRM_LABEL", "確 定")
+CONFIRM_ALLSEARCH_LABEL   = _os.getenv("CONFIRM_ALLSEARCH_LABEL", "確定・全検索")
+
+# 曜日チェック（UIは “日 / 土 / 祝日” のチェックボックス）
+DAY_CHECK_LABELS = ("日", "土", "祝日")
+
+# ---- 互換エイリアス（旧コードが別名で import してもOKにする） ----
+globals().update({
+    "CATEGORY1": CATEGORY1_LABEL,
+    "CATEGORY2": CATEGORY2_LABEL,
+    "SPORT_PURPOSE_LABEL": PURPOSE_LABEL,
+    "ALLSEARCH_LABEL": CONFIRM_ALLSEARCH_LABEL,
+})
+
