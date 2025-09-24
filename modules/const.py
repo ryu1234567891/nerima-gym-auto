@@ -1,5 +1,6 @@
-# modules/const.py  — config.toml が空でも落ちないデフォルト内蔵版
+# modules/const.py — 安全なデフォルト内蔵 + TOML/ENV 上書き対応
 from __future__ import annotations
+import os
 from pathlib import Path
 
 # tomllib(3.11+)/tomli(3.10) 両対応
@@ -20,6 +21,7 @@ def _load_config() -> dict:
 CONFIG: dict = _load_config()
 SEL: dict = CONFIG.get("selectors", {}) or {}
 APP: dict = CONFIG.get("app", {}) or {}
+SLEEP: dict = CONFIG.get("sleep", {}) or {}
 
 # ---- 既定セレクタ（ここだけで完結するよう一式定義） ----
 DEFAULTS = {
@@ -39,8 +41,6 @@ DEFAULTS = {
     "error_text": "text=エラーが発生しました, text=一定時間操作がなかった場合, text=アクセス権限がありません",
     "error_buttons": "a:has-text('TOPへ'), input[value='確 定'], button:has-text('確定'), button:has-text('閉じる'), a:has-text('閉じる')",
 }
-
-# 旧名を許す（将来の名前変更や手元のconfig互換）
 ALIASES = {
     "multifunc": ("multifunc", "multifunc_button"),
     "left_avail_menu": ("left_avail_menu",),
@@ -59,7 +59,7 @@ def _get_sel(key: str) -> str:
             return v
     return DEFAULTS[key]
 
-# ---- 外部に公開する定数（他モジュールが import） ----
+# ---- 公開（他モジュールが import） ----
 URL_GIN_MENU       = _get_sel("gin_menu_url")
 MULTIFUNC_SELECTOR = _get_sel("multifunc")
 LEFT_AVAIL_MENU    = _get_sel("left_avail_menu")
@@ -69,7 +69,19 @@ OK_CELL_SELECTOR   = _get_sel("ok_cell")
 ERROR_TEXT_SELECTOR    = _get_sel("error_text")
 ERROR_BUTTONS_SELECTOR = _get_sel("error_buttons")
 
-# ---- その他アプリ設定（未定義なら既定値）
+# ---- アプリ設定（未定義なら既定値）
 USER_AGENT        = APP.get("user_agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari")
 STEP_TIMEOUT_SEC  = int(APP.get("step_timeout_sec", 40))
 TOTAL_TIMEOUT_SEC = int(APP.get("total_timeout_sec", 300))
+
+# ---- スリープ/リトライ設定（runner.py から import される）
+# 初期待機（ページロード直後に少し待つ）
+INITIAL_SLEEP_MS_MIN = int(os.getenv("INITIAL_SLEEP_MS_MIN", SLEEP.get("initial_min_ms", 150)))
+INITIAL_SLEEP_MS_MAX = int(os.getenv("INITIAL_SLEEP_MS_MAX", SLEEP.get("initial_max_ms", 400)))
+
+# ページング間の待機（仕様書：300–800ms のランダムスリープ）
+PAGE_SLEEP_MS_MIN = int(os.getenv("PAGE_SLEEP_MS_MIN", SLEEP.get("page_min_ms", 300)))
+PAGE_SLEEP_MS_MAX = int(os.getenv("PAGE_SLEEP_MS_MAX", SLEEP.get("page_max_ms", 800)))
+
+# 重要操作のリトライ回数
+RETRY_MAX = int(os.getenv("RETRY_MAX", SLEEP.get("retry_max", 3)))
