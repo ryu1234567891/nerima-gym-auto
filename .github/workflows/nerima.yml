@@ -76,7 +76,7 @@ jobs:
 
                 # ===== SMTP 送信テスト（一時的）=====
       - name: SMTP health check (force send)
-        if: ${{ always() }}   # 成否に関わらず実行
+        if: ${{ always() }}
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
@@ -84,5 +84,24 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           MAIL_TO:   ${{ secrets.MAIL_TO }}
         run: |
-          python send_test_mail.py
+          python - <<'PY'
+          import os, sys
+          sys.path.append('.')
+          try:
+              from modules.notifier import send_mail
+          except Exception as e:
+              print("import notifier failed:", e)
+              raise
+          # notifier.send_mail が期待する形に合わせたダミー1件
+          records = [{
+              "date_iso": "2025-01-01",
+              "start":    "09:00",
+              "end":      "12:00",
+              "facility_name": "SMTPテスト（CI）"
+          }]
+          print("sending test mail...")
+          ok = send_mail(records, dry_run=False)
+          print("sent:", ok)
+          PY
+
 
