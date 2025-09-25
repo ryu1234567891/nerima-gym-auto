@@ -1,24 +1,16 @@
 name: Nerima Availability (every 3 hours)
 
 on:
+  # 手動実行
   workflow_dispatch:
+  # 3時間ごと（UTC基準。JSTなら +9h を意識）
   schedule:
-    - cron: "3 */3 * * *"   # 3時間毎（UTC）
-
-permissions:
-  contents: read
-
-# 重複起動を防止（手動と定期が重なっても1本だけ動かす）
-concurrency:
-  group: nerima-availability
-  cancel-in-progress: true
+    - cron: "0 */3 * * *"
 
 jobs:
   run-both:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      TZ: Asia/Tokyo   # JST固定（抽出期間のズレ防止）
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -33,76 +25,136 @@ jobs:
         run: |
           set -eux
           python -m pip install -U pip
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            # requirements.txt がない場合の保険（必要な最低限）
+            pip install playwright python-dotenv
+          fi
           python -m playwright install --with-deps chromium
 
-      # ① Secrets(AUTONERIMAGYM) → .env を作成し、その場で export
-      - name: Write & export .env
+      # =========================
+      #  Secret から .env を書き出し
+      # =========================
+      - name: Write .env from secret
+        shell: bash
         env:
           AUTONERIMAGYM: ${{ secrets.AUTONERIMAGYM }}
+        run: |
+          set -eu
+          printf '%s\n' "$AUTONERIMAGYM" > .env
+          # CRLF → LF
+          sed -i 's/\r$//' .env
+          echo "----- .env preview (keys only) -----"
+          grep -E '^[A-Z0-9_]+=' .env | sed 's/=.*$/=****/'
+
+      # ===========================================
+      #  .env を安全にパースして GITHUB_ENV に流し込む
+      #   - 値が "" / '' で囲まれていてもOK
+      #   - 改行や日本語を壊さない
+      # ===========================================
+      - name: Export .env to environment (robust)
         shell: bash
         run: |
-          set -eux
-          # 複数行Secretを .env に書き出し
-          printf "%s\n" "$AUTONERIMAGYM" > .env
-          # CRLF→LF 正規化（Windows改行対策）
-          sed -i 's/\r$//' .env
-          # ここで現在のシェル環境に取り込む（以降のステップでも使えるよう export）
-          set -a
-          . ./.env
-          set +a
+          set -eu
+          python - <<'PY' >> "$GITHUB_ENV"
+import os
+env = {}
+with open(".env", encoding="utf-8") as f:
+    for line in f:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip(); v = v.strip()
+        # 値が引用符で囲まれていれば外す
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+            v = v[1:-1]
+        env[k] = v
 
-      # ② 安全に「環境に入ったか」可視化（値そのものは表示しない）
+# GITHUB_ENV へ安全に出力（改行対応）
+for k, v in env.items():
+    print(f"{k}<<__EOF__\n{v}\n__EOF__")
+PY
+
+      # ============================
+      #  メール設定の健全性チェック
+      #  （bad substitution 回避版）
+      # ============================
       - name: Check mail envs (safe)
         shell: bash
         run: |
           set -eu
-          echo "HAS_SMTP_HOST=$([ -n "${SMTP_HOST:-}" ] && echo 1 || echo 0)"
-          echo "HAS_SMTP_USER=$([ -n "${SMTP_USER:-}" ] && echo 1 || echo 0)"
-          echo "HAS_SMTP_PASS=$([ -n "${SMTP_PASS:-}" ] && echo 1 || echo 0)"
-          echo "HAS_MAIL_FROM=$([ -n "${MAIL_FROM:-}" ] && echo 1 || echo 0)"
-          echo "HAS_MAIL_TO=$([ -n "${MAIL_TO:-}" ] && echo 1 || echo 0)"
-          echo "FORCE_MAIL_LEN=${#FORCE_MAIL:-0}"
+          HAS_SMTP_HOST=$([ -n "${SMTP_HOST:-}" ] && echo 1 || echo 0)
+          HAS_SMTP_USER=$([ -n "${SMTP_USER:-}" ] && echo 1 || echo 0)
+          HAS_SMTP_PASS=$([ -n "${SMTP_PASS:-}" ] && echo 1 || echo 0)
+          HAS_MAIL_FROM=$([ -n "${MAIL_FROM:-}" ] && echo 1 || echo 0)
+          HAS_MAIL_TO=$([ -n "${MAIL_TO:-}" ] && echo 1 || echo 0)
 
-      # ③ 屋内スポーツ施設で巡回＆通知
-      - name: Run scraper (屋内スポーツ施設)
-        shell: bash
-        run: |
-          set -eux
-          python main.py
+          _fm="${FORCE_MAIL:-}"
+          FORCE_MAIL_LEN=${#_fm}
 
-      # ④ 文化施設で巡回＆通知（環境変数でカテゴリ切替）
-      - name: Run scraper (文化施設)
+          echo "HAS_SMTP_HOST=$HAS_SMTP_HOST"
+          echo "HAS_SMTP_USER=$HAS_SMTP_USER"
+          echo "HAS_SMTP_PASS=$HAS_SMTP_PASS"
+          echo "HAS_MAIL_FROM=$HAS_MAIL_FROM"
+          echo "HAS_MAIL_TO=$HAS_MAIL_TO"
+          echo "FORCE_MAIL_LEN=$FORCE_MAIL_LEN"
+
+      # ======================
+      #  屋内スポーツ施設 版
+      # ======================
+      - name: Run scraper for 屋内スポーツ施設
         env:
-          CATEGORY1_LABEL: "文化施設"
-        shell: bash
+          CATEGORY1_LABEL: 屋内スポーツ施設
+          SHOW: "0"
+          SLOWMO: "0"
         run: |
           set -eux
-          python main.py
+          python main.py --show ${SHOW} --slowmo ${SLOWMO}
 
-      # ⑤ デバッグ用成果物（HTML/ログ）を保存
+      # ================
+      #  文化施設 版
+      # ================
+      - name: Run scraper for 文化施設
+        env:
+          CATEGORY1_LABEL: 文化施設
+          SHOW: "0"
+          SLOWMO: "0"
+        run: |
+          set -eux
+          python main.py --show ${SHOW} --slowmo ${SLOWMO}
+
+      # スナップショットやログの回収（任意）
       - name: Upload logs & snapshots (artifacts)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: data-${{ github.run_id }}
-          if-no-files-found: ignore
           path: |
             data/**/*.html
             data/**/*.txt
-            data/*.json
+            data/**/*.json
+          if-no-files-found: ignore
 
-      # （任意）テスト送信は無効のままでOK。送信系を単体確認したい時だけ true に。
+      # （任意）テストメールを投げたい場合は true に変更
       - name: SMTP health check (optional)
         if: false
-        shell: bash
+        env:
+          AUTONERIMAGYM: ${{ secrets.AUTONERIMAGYM }}
         run: |
-          set -eux
-          # .env はすでに書かれているので再export（保険）
-          set -a; . ./.env; set +a
+          set -eu
+          # ここを true にして送信確認したい場合は、
+          # modules/notifier.py の send_mail を直接呼ぶ
           python - <<'PY'
-          from modules.notifier import send_mail
-          print("sending test mail...")
-          send_mail([{"date_iso":"1970-01-01","time":"00:00–00:01","facility":"SMTP TEST"}], dry_run=False)
-          print("ok")
-          PY
+import os, json, sys
+from modules.notifier import send_mail
+from modules.notifier import make_mail_body
+
+fake = [
+  {"date_iso":"2025-10-04","start":"18:00","end":"21:00","facility_name":"テスト施設A","slot":"18:00–21:00","url":"https://yoyaku.city.nerima.tokyo.jp/stagia/reserve/gin_menu"}
+]
+body = make_mail_body(fake)
+ok = send_mail(fake, dry_run=False, body_override=body)
+print("sent:", ok)
+PY
