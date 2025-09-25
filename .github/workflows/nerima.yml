@@ -3,13 +3,23 @@ name: Nerima Availability (every 3 hours)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */3 * * *"   # 3時間おき
+    - cron: "3 */3 * * *"   # 3時間毎（UTC）
+
+permissions:
+  contents: read
+
+# 重複起動を防止（手動と定期が重なっても1本だけ動かす）
+concurrency:
+  group: nerima-availability
+  cancel-in-progress: true
 
 jobs:
   run-both:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
-      TZ: Asia/Tokyo
+      TZ: Asia/Tokyo   # JST固定（抽出期間のズレ防止）
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,40 +31,78 @@ jobs:
 
       - name: Install dependencies (pip + Playwright)
         run: |
-          python -m pip install --upgrade pip
+          set -eux
+          python -m pip install -U pip
           pip install -r requirements.txt
           python -m playwright install --with-deps chromium
 
-      - name: Run 屋内スポーツ施設
+      # ① Secrets(AUTONERIMAGYM) → .env を作成し、その場で export
+      - name: Write & export .env
+        env:
+          AUTONERIMAGYM: ${{ secrets.AUTONERIMAGYM }}
+        shell: bash
         run: |
+          set -eux
+          # 複数行Secretを .env に書き出し
+          printf "%s\n" "$AUTONERIMAGYM" > .env
+          # CRLF→LF 正規化（Windows改行対策）
+          sed -i 's/\r$//' .env
+          # ここで現在のシェル環境に取り込む（以降のステップでも使えるよう export）
+          set -a
+          . ./.env
+          set +a
+
+      # ② 安全に「環境に入ったか」可視化（値そのものは表示しない）
+      - name: Check mail envs (safe)
+        shell: bash
+        run: |
+          set -eu
+          echo "HAS_SMTP_HOST=$([ -n "${SMTP_HOST:-}" ] && echo 1 || echo 0)"
+          echo "HAS_SMTP_USER=$([ -n "${SMTP_USER:-}" ] && echo 1 || echo 0)"
+          echo "HAS_SMTP_PASS=$([ -n "${SMTP_PASS:-}" ] && echo 1 || echo 0)"
+          echo "HAS_MAIL_FROM=$([ -n "${MAIL_FROM:-}" ] && echo 1 || echo 0)"
+          echo "HAS_MAIL_TO=$([ -n "${MAIL_TO:-}" ] && echo 1 || echo 0)"
+          echo "FORCE_MAIL_LEN=${#FORCE_MAIL:-0}"
+
+      # ③ 屋内スポーツ施設で巡回＆通知
+      - name: Run scraper (屋内スポーツ施設)
+        shell: bash
+        run: |
+          set -eux
           python main.py
 
-      - name: Run 文化施設
+      # ④ 文化施設で巡回＆通知（環境変数でカテゴリ切替）
+      - name: Run scraper (文化施設)
         env:
           CATEGORY1_LABEL: "文化施設"
+        shell: bash
         run: |
+          set -eux
           python main.py
 
+      # ⑤ デバッグ用成果物（HTML/ログ）を保存
       - name: Upload logs & snapshots (artifacts)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nerima-data
+          name: data-${{ github.run_id }}
+          if-no-files-found: ignore
           path: |
-            data/**/*
+            data/**/*.html
+            data/**/*.txt
             data/*.json
-            data/*.txt
 
-      # ← テストメールを一旦止める（あとで true / 削除で復活）
+      # （任意）テスト送信は無効のままでOK。送信系を単体確認したい時だけ true に。
       - name: SMTP health check (optional)
         if: false
-        env:
-          AUTONERIMAGYM: ${{ secrets.AUTONERIMAGYM }}
+        shell: bash
         run: |
-          # ここは secrets を環境に展開済み前提で生メール送信を試す
+          set -eux
+          # .env はすでに書かれているので再export（保険）
+          set -a; . ./.env; set +a
           python - <<'PY'
           from modules.notifier import send_mail
           print("sending test mail...")
-          send_mail([{"date_iso":"2025-10-04","time":"09:00–11:00","facility":"health-check"}], dry_run=False)
+          send_mail([{"date_iso":"1970-01-01","time":"00:00–00:01","facility":"SMTP TEST"}], dry_run=False)
           print("ok")
           PY
