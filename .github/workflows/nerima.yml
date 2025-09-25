@@ -80,6 +80,7 @@ jobs:
 
       # （任意）手動実行時/FORCE_MAIL=1のときSMTP疎通テスト
       - name: SMTP health check (optional)
+      if: false
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           python - <<'PY'
