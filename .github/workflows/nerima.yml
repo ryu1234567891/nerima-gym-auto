@@ -1,35 +1,15 @@
 name: Nerima Availability (every 3 hours)
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
   schedule:
-    # UTC基準。日本時間(JST)で3時間ごとにしたい場合もそのままでOK
-    - cron: "0 */3 * * *"
-
-permissions:
-  contents: read
-
-# 進行中の実行がある場合は新しい実行をキャンセル（重複起動を防止）
-concurrency:
-  group: nerima-availability-${{ github.ref }}
-  cancel-in-progress: true
+    - cron: "0 */3 * * *"   # 3時間おき
 
 jobs:
   run-both:
-    name: Run ${{ matrix.category }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     env:
       TZ: Asia/Tokyo
-
-    strategy:
-      fail-fast: false
-      matrix:
-        # ここに回したいカテゴリを並べる（順番に2回実行されます）
-        category:
-          - "屋内スポーツ施設"
-          - "文化施設"
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,66 +18,43 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
 
       - name: Install dependencies (pip + Playwright)
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            pip install playwright python-dotenv beautifulsoup4 lxml
-          fi
+          pip install -r requirements.txt
           python -m playwright install --with-deps chromium
 
-      # リポジトリSecret AUTONERIMAGYM（複数行）を .env に展開
-      - name: Create .env from secret
-        env:
-          SECRET_ENV: ${{ secrets.AUTONERIMAGYM }}
-        run: |
-          printf "%s\n" "$SECRET_ENV" > .env
-          echo "TZ=Asia/Tokyo" >> .env
-
-      # カテゴリ切替は環境変数で渡す（アプリ側で load_dotenv() 済み前提）
-      - name: Run scraper for ${{ matrix.category }}
-        env:
-          CATEGORY1_LABEL: ${{ matrix.category }}
+      - name: Run 屋内スポーツ施設
         run: |
           python main.py
 
-      # 失敗時も含めてデバッグ用成果物を保存
+      - name: Run 文化施設
+        env:
+          CATEGORY1_LABEL: "文化施設"
+        run: |
+          python main.py
+
       - name: Upload logs & snapshots (artifacts)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nerima-${{ matrix.category }}-${{ github.run_id }}
-          if-no-files-found: ignore
+          name: nerima-data
           path: |
-            data/**/*.html
-            data/**/*.txt
-            data/**/*.log
+            data/**/*
             data/*.json
+            data/*.txt
 
-      # （任意）手動実行時/FORCE_MAIL=1のときSMTP疎通テスト
+      # ← テストメールを一旦止める（あとで true / 削除で復活）
       - name: SMTP health check (optional)
-      if: false
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: false
+        env:
+          AUTONERIMAGYM: ${{ secrets.AUTONERIMAGYM }}
         run: |
+          # ここは secrets を環境に展開済み前提で生メール送信を試す
           python - <<'PY'
-          import os
-          from dotenv import load_dotenv
-          load_dotenv()
-          fm = os.getenv("FORCE_MAIL","0").strip().lower()
-          if fm in ("1","true","yes","on"):
-              print("sending test mail...")
-              try:
-                  from modules.notifier import send_mail
-                  # 空レコードで件名だけ送る実装にしている想定。実装に合わせて調整可。
-                  send_mail([], dry_run=False, subject_prefix="[Actions health-check]")
-                  print("done")
-              except Exception as e:
-                  import traceback; traceback.print_exc()
-                  raise
-          else:
-              print("FORCE_MAIL is not enabled; skipping.")
+          from modules.notifier import send_mail
+          print("sending test mail...")
+          send_mail([{"date_iso":"2025-10-04","time":"09:00–11:00","facility":"health-check"}], dry_run=False)
+          print("ok")
           PY
